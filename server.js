@@ -8,22 +8,27 @@ const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const path = require('path');
 
+
 const User = require('./models/User');
 const Scan = require('./models/Scan');
+
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "*" } });
 
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
 
 if (process.env.MONGODB_URI) {
     mongoose.connect(process.env.MONGODB_URI)
         .then(() => console.log('Connected to MongoDB'))
         .catch(err => console.error('MongoDB error:', err));
 }
+
 
 const authenticate = (req, res, next) => {
     const token = req.headers['authorization']?.split(' ')[1];
@@ -35,6 +40,7 @@ const authenticate = (req, res, next) => {
     });
 };
 
+
 app.post('/api/users', authenticate, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
     const { username, password, role } = req.body;
@@ -45,11 +51,13 @@ app.post('/api/users', authenticate, async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Error creating user' }); }
 });
 
+
 app.get('/api/users', authenticate, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
     const users = await User.find({ role: 'agent' }).select('-password');
     res.json(users);
 });
+
 
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
@@ -60,6 +68,7 @@ app.post('/api/auth/login', async (req, res) => {
         const token = jwt.sign({ id: 'fallback-admin', username: 'admin', role: 'admin' }, process.env.JWT_SECRET || 'secret');
         return res.json({ token, user: { username: 'admin', role: 'admin' } });
     }
+
 
     try {
         const user = await User.findOne({ username });
@@ -73,65 +82,25 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+
 // Real-time communication
 io.on('connection', (socket) => {
     console.log('New client connected');
     socket.on('disconnect', () => console.log('Client disconnected'));
 });
 
+
 // API for scans
 app.post('/api/scans', authenticate, async (req, res) => {
     const { voucherCode } = req.body;
+
+    // Check if code already exists
+    const existingScan = await Scan.findOne({ voucherCode });
+    if (existingScan) {
+        return res.status(400).json({ message: 'Duplicate code' });
+    }
     const scan = new Scan({
         agent: req.user.id,
         voucherCode,
         status: Math.random() > 0.5 ? 'success' : 'failed'
     });
-
-    try {
-        const savedScan = await scan.save();
-        io.emit('newScan', savedScan);
-        res.status(201).json(savedScan);
-    } catch (err) {
-        res.status(500).json({ message: 'Error saving scan' });
-    }
-});
-
-app.get('/api/scans', authenticate, async (req, res) => {
-    try {
-        const scans = await Scan.find().populate('agent', 'username').sort({ createdAt: -1 });
-        res.json(scans);
-    } catch (err) {
-        res.status(500).json({ message: 'Error fetching scans' });
-    }
-});
-
-app.get('/api/stats', authenticate, async (req, res) => {
-    try {
-        const totalScans = await Scan.countDocuments();
-        const successScans = await Scan.countDocuments({ status: 'success' });
-        const failedScans = await Scan.countDocuments({ status: 'failed' });
-        const agentsCount = await User.countDocuments({ role: 'agent' });
-        res.json({ totalScans, successScans, failedScans, agentsCount });
-    } catch (err) {
-        res.status(500).json({ message: 'Error fetching stats' });
-    }
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-app.post('/api/users', authenticate, async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-    const { username, password, role } = req.body;
-    try {
-        const newUser = new User({ username, password, role: role || 'agent' });
-        await newUser.save();
-        res.status(201).json({ message: 'User created successfully' });
-    } catch (err) { res.status(500).json({ message: 'Error creating user' }); }
-});
-
-app.get('/api/users', authenticate, async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-    const users = await User.find({ role: 'agent' }).select('-password');
-    res.json(users);
-});
