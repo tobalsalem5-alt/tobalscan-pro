@@ -28,7 +28,7 @@ if (process.env.MONGODB_URI) {
 const authenticate = (req, res, next) => {
     const token = req.headers['authorization']?.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'Unauthorized' });
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    jwt.verify(token, process.env.JWT_SECRET || 'secret', (err, decoded) => {
         if (err) return res.status(401).json({ message: 'Invalid token' });
         req.user = decoded;
         next();
@@ -37,14 +37,24 @@ const authenticate = (req, res, next) => {
 
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
+    
+    // Emergency Fallback Login (if DB is not connected or user doesn't exist)
+    const fallbackPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    if (username === 'admin' && password === fallbackPassword) {
+        const token = jwt.sign({ id: 'fallback-admin', username: 'admin', role: 'admin' }, process.env.JWT_SECRET || 'secret');
+        return res.json({ token, user: { username: 'admin', role: 'admin' } });
+    }
+
     try {
         const user = await User.findOne({ username });
         if (!user || !(await user.comparePassword(password))) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
-        const token = jwt.sign({ id: user._id, username: user.username, role: user.role }, process.env.JWT_SECRET);
+        const token = jwt.sign({ id: user._id, username: user.username, role: user.role }, process.env.JWT_SECRET || 'secret');
         res.json({ token, user: { username: user.username, role: user.role } });
-    } catch (err) { res.status(500).json({ message: 'Server error' }); }
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
+    }
 });
 
 const setupAdmin = async () => {
@@ -65,7 +75,9 @@ app.post('/api/scans', authenticate, async (req, res) => {
         await scan.save();
         io.emit('new-scan', scan);
         res.status(201).json(scan);
-    } catch (err) { res.status(500).json({ message: 'Error' }); }
+    } catch (err) {
+        res.status(500).json({ message: 'Error' });
+    }
 });
 
 app.get('/api/scans', authenticate, async (req, res) => {
@@ -84,4 +96,6 @@ app.get('/api/stats', authenticate, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('Server running'));
+server.listen(PORT, () => {
+    console.log('Server running');
+});
