@@ -4,59 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>لوحة التحكم - TobalScan Cloud</title>
-    <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
-    <script src="/socket.io/socket.io.js">
-        function openAgentsModal() {
-            document.getElementById('agentsModal').style.display = 'block';
-            loadAgents();
-        }
-
-        function closeAgentsModal() {
-            document.getElementById('agentsModal').style.display = 'none';
-        }
-
-        async function loadAgents() {
-            const token = localStorage.getItem('token');
-            try {
-                const response = await fetch('/api/users', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                if (response.ok) {
-                    const agents = await response.json();
-                    const list = document.getElementById('agentsList');
-                    list.innerHTML = agents.map(a => '<tr><td>' + a.username + '</td><td>' + new Date(a.createdAt).toLocaleDateString('ar-EG') + '</td><td><span class="badge">' + a.role + '</span></td></tr>').join('');
-                }
-            } catch (err) { console.error('Error loading agents:', err); }
-        }
-
-        async function addAgent(e) {
-            e.preventDefault();
-            const username = document.getElementById('newUsername').value;
-            const password = document.getElementById('newPassword').value;
-            const token = localStorage.getItem('token');
-
-            try {
-                const response = await fetch('/api/users', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token 
-                    },
-                    body: JSON.stringify({ username, password, role: 'agent' })
-                });
-
-                if (response.ok) {
-                    alert('تم إضافة الوكيل بنجاح');
-                    document.getElementById('addAgentForm').reset();
-                    loadAgents();
-                } else {
-                    const data = await response.json();
-                    alert(data.message || 'خطأ في إضافة الوكيل');
-                }
-            } catch (err) { alert('خطأ في الاتصال بالسيرفر'); }
-        }
-\n    </script>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
             --primary: #4f46e5;
@@ -94,6 +43,7 @@
             border: 1px solid var(--glass-border);
             border-radius: 16px;
             overflow: hidden;
+            margin-top: 20px;
         }
         table { width: 100%; border-collapse: collapse; text-align: right; }
         th, td { padding: 15px; border-bottom: 1px solid var(--glass-border); }
@@ -105,6 +55,15 @@
             font-size: 12px;
             background: var(--primary);
         }
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+        }
         .logout-btn {
             background: #ef4444;
             color: white;
@@ -114,16 +73,37 @@
             cursor: pointer;
             font-weight: 700;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: var(--bg);
+            border: 1px solid var(--glass-border);
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 20px;
+            width: 80%;
+            max-width: 800px;
+            color: white;
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>لوحة تحكم TobalScan</h1>
-        <div style="display: flex; gap: 10px;"><button id="manageAgentsBtn" class="btn" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 700;" onclick="openAgentsModal()">إدارة الوكلاء</button><button class="logout-btn" onclick="logout()">تسجيل الخروج</button></div>
+        <div style="display: flex; gap: 10px;">
+            <button id="manageAgentsBtn" class="btn" onclick="openAgentsModal()" style="display: none;">إدارة الوكلاء</button>
+            <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+        </div>
     </div>
-
-
-
 
     <div class="stats-grid">
         <div class="stat-card">
@@ -131,10 +111,126 @@
             <div class="stat-label">إجمالي المسوحات</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value" id="scansToday">0</div>
-            <div class="stat-label">مسوحات اليوم</div>
+            <div class="stat-value" id="successScans">0</div>
+            <div class="stat-label">مسوحات ناجحة</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="failedScans">0</div>
+            <div class="stat-label">مسوحات فاشلة</div>
         </div>
         <div class="stat-card">
             <div class="stat-value" id="activeAgents">0</div>
-            <div class="stat-label">الوكلاء النشطون</div>
+            <div class="stat-label">الوكلاء</div>
         </div>
+    </div>
+
+    <h2>أحدث المسوحات</h2>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>الوكيل</th>
+                    <th>كود الفاوتشر</th>
+                    <th>الحالة</th>
+                    <th>التوقيت</th>
+                </tr>
+            </thead>
+            <tbody id="scansList"></tbody>
+        </table>
+    </div>
+
+    <div id="agentsModal" class="modal">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>إدارة الوكلاء</h2>
+                <button onclick="closeAgentsModal()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+            </div>
+            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; margin-bottom: 30px;">
+                <h3>إضافة وكيل جديد</h3>
+                <form id="addAgentForm" style="display: flex; gap: 10px; flex-wrap: wrap;" onsubmit="addAgent(event)">
+                    <input type="text" id="newUsername" placeholder="اسم المستخدم" required style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
+                    <input type="password" id="newPassword" placeholder="كلمة المرور" required style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
+                    <button type="submit" class="btn">إضافة</button>
+                </form>
+            </div>
+            <h3>قائمة الوكلاء</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>اسم المستخدم</th>
+                            <th>تاريخ الإنشاء</th>
+                            <th>الدور</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agentsList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        const userStr = localStorage.getItem('user');
+        const user = userStr ? JSON.parse(userStr) : {};
+        
+        if (!token) window.location.href = 'login.html';
+        if (user.role === 'admin') document.getElementById('manageAgentsBtn').style.display = 'block';
+
+        const socket = io();
+        socket.on('newScan', () => { loadStats(); loadScans(); });
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/stats', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                document.getElementById('totalScans').innerText = data.totalScans;
+                document.getElementById('successScans').innerText = data.successScans;
+                document.getElementById('failedScans').innerText = data.failedScans;
+                document.getElementById('activeAgents').innerText = data.agentsCount;
+            } catch (err) { console.error(err); }
+        }
+
+        async function loadScans() {
+            try {
+                const res = await fetch('/api/scans', { headers: { 'Authorization': 'Bearer ' + token } });
+                const scans = await res.json();
+                const list = document.getElementById('scansList');
+                list.innerHTML = scans.map(s => '<tr><td>' + (s.agent?.username || 'Unknown') + '</td><td>' + s.voucherCode + '</td><td><span class="badge" style="background: ' + (s.status === 'success' ? '#22c55e' : '#ef4444') + '">' + s.status + '</span></td><td>' + new Date(s.createdAt).toLocaleTimeString('ar-EG') + '</td></tr>').join('');
+            } catch (err) { console.error(err); }
+        }
+
+        function openAgentsModal() { document.getElementById('agentsModal').style.display = 'block'; loadAgents(); }
+        function closeAgentsModal() { document.getElementById('agentsModal').style.display = 'none'; }
+
+        async function loadAgents() {
+            try {
+                const res = await fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + token } });
+                const agents = await res.json();
+                const list = document.getElementById('agentsList');
+                list.innerHTML = agents.map(a => '<tr><td>' + a.username + '</td><td>' + new Date(a.createdAt).toLocaleDateString('ar-EG') + '</td><td><span class="badge">' + a.role + '</span></td></tr>').join('');
+            } catch (err) { console.error(err); }
+        }
+
+        async function addAgent(e) {
+            e.preventDefault();
+            const username = document.getElementById('newUsername').value;
+            const password = document.getElementById('newPassword').value;
+            try {
+                const res = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ username, password, role: 'agent' })
+                });
+                if (res.ok) { alert('تم إضافة الوكيل بنجاح'); document.getElementById('addAgentForm').reset(); loadAgents(); }
+                else { const data = await res.json(); alert(data.message || 'خطأ'); }
+            } catch (err) { alert('خطأ في الاتصال'); }
+        }
+
+        function logout() { localStorage.clear(); window.location.href = 'login.html'; }
+
+        loadStats();
+        loadScans();
+    </script>
+</body>
+            </html>
