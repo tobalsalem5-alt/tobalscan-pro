@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحكم - TobalScan Cloud</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: var(--bg);
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-value { font-size: 32px; font-weight: 700; color: var(--primary); }
+        .stat-label { opacity: 0.7; font-size: 14px; }
+        .table-container {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; text-align: right; }
+        th, td { padding: 15px; border-bottom: 1px solid var(--glass-border); }
+        th { background: rgba(255, 255, 255, 0.05); font-weight: 700; }
+        tr:hover { background: rgba(255, 255, 255, 0.02); }
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            background: var(--primary);
+        }
+        .logout-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>لوحة تحكم TobalScan</h1>
+        <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="totalScans">0</div>
+            <div class="stat-label">إجمالي المسوحات</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="scansToday">0</div>
+            <div class="stat-label">مسوحات اليوم</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="activeAgents">0</div>
+            <div class="stat-label">الوكلاء النشطون</div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>الكود</th>
+                    <th>الوكيل</th>
+                    <th>الوقت</th>
+                </tr>
+            </thead>
+            <tbody id="scansTable">
+                <!-- Data will be populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = 'login.html';
+
+        const socket = io();
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.status === 401) logout();
+                const data = await res.json();
+                document.getElementById('totalScans').innerText = data.totalScans || 0;
+                document.getElementById('scansToday').innerText = data.scansToday || 0;
+                document.getElementById('activeAgents').innerText = data.activeAgents || 0;
+            } catch(e) {}
+        }
+
+        async function fetchScans() {
+            try {
+                const res = await fetch('/api/scans', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (Array.isArray(data)) data.forEach(addScanToTable);
+            } catch(e) {}
+        }
+
+        function addScanToTable(scan) {
+            const tbody = document.getElementById('scansTable');
+            const row = `<tr>
+                <td><span class="badge">${scan.code}</span></td>
+                <td>${scan.agentName}</td>
+                <td>${new Date(scan.timestamp).toLocaleString('ar-EG')}</td>
+            </tr>`;
+            tbody.insertAdjacentHTML('afterbegin', row);
+        }
+
+        socket.on('new-scan', (scan) => {
+            addScanToTable(scan);
+            fetchStats();
+        });
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        fetchStats();
+        fetchScans();
+    </script>
+</body>
+</html>
