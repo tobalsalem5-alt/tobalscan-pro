@@ -6,7 +6,57 @@
     <title>لوحة التحكم - TobalScan Cloud</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="/socket.io/socket.io.js">
+        function openAgentsModal() {
+            document.getElementById('agentsModal').style.display = 'block';
+            loadAgents();
+        }
+
+        function closeAgentsModal() {
+            document.getElementById('agentsModal').style.display = 'none';
+        }
+
+        async function loadAgents() {
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch('/api/users', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (response.ok) {
+                    const agents = await response.json();
+                    const list = document.getElementById('agentsList');
+                    list.innerHTML = agents.map(a => '<tr><td>' + a.username + '</td><td>' + new Date(a.createdAt).toLocaleDateString('ar-EG') + '</td><td><span class="badge">' + a.role + '</span></td></tr>').join('');
+                }
+            } catch (err) { console.error('Error loading agents:', err); }
+        }
+
+        async function addAgent(e) {
+            e.preventDefault();
+            const username = document.getElementById('newUsername').value;
+            const password = document.getElementById('newPassword').value;
+            const token = localStorage.getItem('token');
+
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token 
+                    },
+                    body: JSON.stringify({ username, password, role: 'agent' })
+                });
+
+                if (response.ok) {
+                    alert('تم إضافة الوكيل بنجاح');
+                    document.getElementById('addAgentForm').reset();
+                    loadAgents();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'خطأ في إضافة الوكيل');
+                }
+            } catch (err) { alert('خطأ في الاتصال بالسيرفر'); }
+        }
+\n    </script>
     <style>
         :root {
             --primary: #4f46e5;
@@ -69,8 +119,11 @@
 <body>
     <div class="header">
         <h1>لوحة تحكم TobalScan</h1>
-        <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+        <div style="display: flex; gap: 10px;"><button id="manageAgentsBtn" class="btn" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 700;" onclick="openAgentsModal()">إدارة الوكلاء</button><button class="logout-btn" onclick="logout()">تسجيل الخروج</button></div>
     </div>
+
+
+
 
     <div class="stats-grid">
         <div class="stat-card">
@@ -85,74 +138,3 @@
             <div class="stat-value" id="activeAgents">0</div>
             <div class="stat-label">الوكلاء النشطون</div>
         </div>
-    </div>
-
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>الكود</th>
-                    <th>الوكيل</th>
-                    <th>الوقت</th>
-                </tr>
-            </thead>
-            <tbody id="scansTable">
-                <!-- Data will be populated here -->
-            </tbody>
-        </table>
-    </div>
-
-    <script>
-        const token = localStorage.getItem('token');
-        if (!token) window.location.href = 'login.html';
-
-        const socket = io();
-
-        async function fetchStats() {
-            try {
-                const res = await fetch('/api/stats', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.status === 401) logout();
-                const data = await res.json();
-                document.getElementById('totalScans').innerText = data.totalScans || 0;
-                document.getElementById('scansToday').innerText = data.scansToday || 0;
-                document.getElementById('activeAgents').innerText = data.activeAgents || 0;
-            } catch(e) {}
-        }
-
-        async function fetchScans() {
-            try {
-                const res = await fetch('/api/scans', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (Array.isArray(data)) data.forEach(addScanToTable);
-            } catch(e) {}
-        }
-
-        function addScanToTable(scan) {
-            const tbody = document.getElementById('scansTable');
-            const row = `<tr>
-                <td><span class="badge">${scan.code}</span></td>
-                <td>${scan.agentName}</td>
-                <td>${new Date(scan.timestamp).toLocaleString('ar-EG')}</td>
-            </tr>`;
-            tbody.insertAdjacentHTML('afterbegin', row);
-        }
-
-        socket.on('new-scan', (scan) => {
-            addScanToTable(scan);
-            fetchStats();
-        });
-
-        function logout() {
-            localStorage.clear();
-            window.location.href = 'login.html';
-        }
-
-        fetchStats();
-        fetchScans();
-    </script>
-</body>
-</html>
