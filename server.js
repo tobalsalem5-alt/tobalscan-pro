@@ -81,13 +81,20 @@ app.get('/api/users', authenticate, async (req, res) => {
 });
 
 app.post('/api/users', authenticate, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
     const { username, password, role } = req.body;
     try {
-        // Fix: Removed manual hashing here because the User model hashes it in the pre-save hook.
+        const existingUser = await User.findOne({ username });
+        if (existingUser) return res.status(400).json({ message: 'Username already exists' });
+        
+        // Pass the plain password, User model pre-save hook will handle hashing
         const newUser = new User({ username, password, role: role || 'agent' });
         await newUser.save();
-        res.status(201).json({ message: 'User created' });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+        res.status(201).json({ message: 'User created successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error creating user' });
+    }
 });
 
 app.post('/api/scans', authenticate, upload.single('image'), async (req, res) => {
