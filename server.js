@@ -83,43 +83,25 @@ app.get('/api/users', authenticate, async (req, res) => {
 app.post('/api/users', authenticate, async (req, res) => {
     const { username, password, role } = req.body;
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, password: hashedPassword, role: role || 'agent' });
+        // Fix: Removed manual hashing here because the User model hashes it in the pre-save hook.
+        const newUser = new User({ username, password, role: role || 'agent' });
         await newUser.save();
         res.status(201).json({ message: 'User created' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/users/:id', authenticate, async (req, res) => {
+app.post('/api/scans', authenticate, upload.single('image'), async (req, res) => {
+    const { code } = req.body;
     try {
-        await User.findByIdAndDelete(req.params.id);
-        res.json({ message: 'User deleted' });
+        const newScan = new Scan({
+            code,
+            image: req.file ? `/uploads/${req.file.filename}` : null,
+            agent: req.user.id
+        });
+        await newScan.save();
+        io.emit('newScan', newScan);
+        res.status(201).json(newScan);
     } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// New Sync and Upload Routes
-app.post('/api/sync', authenticate, async (req, res) => {
-    try {
-        const { scans } = req.body;
-        const scansToSave = scans.map(s => ({
-            ...s,
-            agent: req.user.id,
-            createdAt: new Date()
-        }));
-        await Scan.insertMany(scansToSave);
-        io.emit('newScan');
-        res.json({ success: true, count: scansToSave.length });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/upload', authenticate, upload.single('image'), (req, res) => {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    res.json({ imageUrl: `/uploads/${req.file.filename}` });
-});
-
-io.on('connection', (socket) => {
-    console.log('New client connected');
-    socket.on('disconnect', () => console.log('Client disconnected'));
 });
 
 const PORT = process.env.PORT || 3000;
