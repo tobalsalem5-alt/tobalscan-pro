@@ -20,7 +20,12 @@
             margin: 0;
             padding: 20px;
         }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -35,8 +40,15 @@
             padding: 20px;
             text-align: center;
         }
-        .stat-value { font-size: 32px; font-weight: 700; color: var(--primary); }
-        .stat-label { opacity: 0.7; font-size: 14px; }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .stat-label {
+            opacity: 0.7;
+            font-size: 14px;
+        }
         .table-container {
             background: var(--card-bg);
             backdrop-filter: blur(10px);
@@ -45,10 +57,22 @@
             overflow: hidden;
             margin-top: 20px;
         }
-        table { width: 100%; border-collapse: collapse; text-align: right; }
-        th, td { padding: 15px; border-bottom: 1px solid var(--glass-border); }
-        th { background: rgba(255, 255, 255, 0.05); font-weight: 700; }
-        tr:hover { background: rgba(255, 255, 255, 0.02); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: right;
+        }
+        th, td {
+            padding: 15px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        th {
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 700;
+        }
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
         .badge {
             padding: 4px 12px;
             border-radius: 20px;
@@ -65,11 +89,15 @@
             font-family: 'Cairo', sans-serif;
             transition: 0.3s;
         }
-        .btn:hover { opacity: 0.8; transform: translateY(-2px); }
-        
+        .btn:hover {
+            opacity: 0.8;
+            transform: translateY(-2px);
+        }
         .modal {
             display: none;
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background: rgba(0,0,0,0.8);
             z-index: 1000;
             backdrop-filter: blur(5px);
@@ -86,8 +114,7 @@
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; opacity: 0.8; }
         .form-group input {
-            width: 100%;
-            padding: 10px;
+            width: 100%; padding: 10px;
             background: rgba(255,255,255,0.05);
             border: 1px solid var(--glass-border);
             border-radius: 8px;
@@ -104,10 +131,7 @@
             font-family: 'Cairo', sans-serif;
             transition: 0.3s;
         }
-        .export-btn:hover {
-            background: #10b981;
-            color: white;
-        }
+        .export-btn:hover { background: #10b981; color: white; }
     </style>
 </head>
 <body>
@@ -148,12 +172,14 @@
             <tbody id="scansTable"></tbody>
         </table>
     </div>
+
     <div id="agentsModal" class="modal">
         <div class="modal-content">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">إدارة الوكلاء</h2>
                 <button class="btn" style="background: #ef4444;" onclick="closeAgentsModal()">إغلاق</button>
             </div>
+            
             <form id="addAgentForm" style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--glass-border);">
                 <div class="form-group">
                     <label>اسم المستخدم للوكيل</label>
@@ -165,6 +191,7 @@
                 </div>
                 <button type="submit" class="btn" style="width: 100%;">إضافة وكيل جديد</button>
             </form>
+
             <div class="table-container" style="max-height: 300px; overflow-y: auto;">
                 <table id="agentsTable">
                     <thead>
@@ -182,51 +209,131 @@
     <script>
         const token = localStorage.getItem('token');
         const user = JSON.parse(localStorage.getItem('user') || '{}');
+
         if (!token) window.location.href = 'login.html';
+
         if (user.role === 'admin' || user.username === 'admin') {
             document.getElementById('manageAgentsBtn').style.display = 'inline-block';
         }
+
         const socket = io();
+
         async function loadScans() {
             try {
-                const res = await fetch('/api/scans', { headers: { 'Authorization': 'Bearer ' + token } });
+                const res = await fetch('/api/scans', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
                 const scans = await res.json();
                 updateTable(scans);
                 updateStats(scans);
             } catch (err) { console.error(err); }
         }
+
         function updateTable(scans) {
             const tbody = document.getElementById('scansTable');
-            tbody.innerHTML = scans.map(scan => '<tr><td>' + new Date(scan.createdAt).toLocaleString('ar-EG') + '</td><td>' + (scan.agent ? scan.agent.username : 'غير معروف') + '</td><td>' + scan.voucherCode + '</td><td><span class="badge">' + scan.status + '</span></td></tr>').join('');
+            tbody.innerHTML = scans.map(scan => `
+                <tr>
+                    <td>${new Date(scan.createdAt).toLocaleString('ar-EG')}</td>
+                    <td>${scan.agent ? (typeof scan.agent === 'object' ? scan.agent.username : scan.agent) : 'غير معروف'}</td>
+                    <td>${scan.code || scan.voucherCode}</td>
+                    <td><span class="badge">${scan.status || 'تم المسح'}</span></td>
+                </tr>
+            `).join('');
         }
+
         function updateStats(scans) {
             document.getElementById('totalScans').textContent = scans.length;
-            const uniqueAgents = new Set(scans.map(s => s.agent ? s.agent._id : null)).size;
-            document.getElementById('activeAgents').textContent = uniqueAgents;
+            const agents = scans.map(s => s.agent ? (typeof s.agent === 'object' ? s.agent._id : s.agent) : null).filter(a => a);
+            document.getElementById('activeAgents').textContent = new Set(agents).size;
         }
+
         socket.on('newScan', () => loadScans());
+
+        async function loadAgents() {
+            try {
+                const res = await fetch('/api/users', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const agents = await res.json();
+                const list = document.getElementById('agentsList');
+                list.innerHTML = agents.map(agent => `
+                    <tr>
+                        <td>${agent.username}</td>
+                        <td><button class="btn" style="background: #ef4444; padding: 4px 8px;" onclick="deleteAgent('${agent._id}')">حذف</button></td>
+                    </tr>
+                `).join('');
+            } catch (err) { console.error(err); }
+        }
+
         async function deleteAgent(id) {
             if (!confirm('هل أنت متأكد؟')) return;
             try {
-                const res = await fetch('/api/users/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+                const res = await fetch('/api/users/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
                 if (res.ok) loadAgents();
-            } catch (err) { alert('خطأ في الحذف'); }
+                else alert('خطأ في الحذف');
+            } catch (err) { alert('خطأ في الاتصال'); }
         }
-        function exportData() { alert('خاصية تصدير Excel ستكون متاحة قريباً'); }
+
+        function openAgentsModal() {
+            document.getElementById('agentsModal').style.display = 'block';
+            loadAgents();
+        }
+
+        function closeAgentsModal() {
+            document.getElementById('agentsModal').style.display = 'none';
+        }
+
+        document.getElementById('addAgentForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('agentUsername').value;
+            const password = document.getElementById('agentPassword').value;
+            try {
+                const res = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ username, password })
+                });
+                if (res.ok) {
+                    alert('تم إضافة الوكيل');
+                    e.target.reset();
+                    loadAgents();
+                } else {
+                    const data = await res.json();
+                    alert(data.message || 'خطأ');
+                }
+            } catch (err) { alert('خطأ في الاتصال'); }
+        };
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
         async function exportTxtData() {
             try {
-                const res = await fetch('/api/scans', { headers: { 'Authorization': 'Bearer ' + token } });
+                const res = await fetch('/api/scans', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
                 const scans = await res.json();
-                const codes = scans.map(scan => scan.voucherCode || scan.code).join('\n');
+                const codes = scans.map(scan => scan.code || scan.voucherCode).join('\n');
                 const blob = new Blob([codes], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = 'tobalscan_codes_' + new Date().toISOString().slice(0, 10) + '.txt';
-                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-            } catch (error) { console.error('Error:', error); alert('حدث خطأ'); }
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) { alert('حدث خطأ'); }
         }
+
+        function exportData() { alert('خاصية تصدير Excel ستكون متاحة قريباً'); }
+
         loadScans();
     </script>
 </body>
-        </html>
+</html>
