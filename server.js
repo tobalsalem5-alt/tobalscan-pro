@@ -37,10 +37,38 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Database Connection
+// Database Connection & Admin Setup
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB Atlas'))
+    .then(async () => {
+        console.log('Connected to MongoDB Atlas');
+        await setupAdmin();
+    })
     .catch(err => console.error('MongoDB Connection Error:', err));
+
+async function setupAdmin() {
+    try {
+        const adminExists = await User.findOne({ username: 'admin' });
+        if (!adminExists) {
+            const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 10);
+            await User.create({
+                username: 'admin',
+                password: hashedPassword,
+                role: 'admin'
+            });
+            console.log('Admin user created');
+        } else {
+            // Emergency admin reset logic
+            if (process.env.ADMIN_PASSWORD) {
+                adminExists.password = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+                adminExists.role = 'admin';
+                await adminExists.save();
+                console.log('Admin password updated from environment');
+            }
+        }
+    } catch (err) {
+        console.error('Error in setupAdmin:', err);
+    }
+}
 
 // Auth Middleware
 const authenticate = (req, res, next) => {
@@ -86,8 +114,6 @@ app.post('/api/users', authenticate, async (req, res) => {
     try {
         const existingUser = await User.findOne({ username });
         if (existingUser) return res.status(400).json({ message: 'Username already exists' });
-        
-        // Pass the plain password, User model pre-save hook will handle hashing
         const newUser = new User({ username, password, role: role || 'agent' });
         await newUser.save();
         res.status(201).json({ message: 'User created successfully' });
@@ -97,16 +123,21 @@ app.post('/api/users', authenticate, async (req, res) => {
     }
 });
 
+app.delete('/api/users/:id', authenticate, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+    try {
+        await User.findByIdAndDelete(req.params.id);
+        res.json({ message: 'User deleted' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/scans', authenticate, upload.single('image'), async (req, res) => {
     const { code } = req.body;
     try {
-        const newScan = new Scan({
-            code,
-            image: req.file ? `/uploads/${req.file.filename}` : null,
-            agent: req.user.id
-        });
+        const newScan = new Scan({ code, image: req.file ? `/uploads/${req.file.filename}` : null, agent: req.user.id });
         await newScan.save();
-        io.emit('newScan', newScan);
+        const populatedScan = await Scan.findById(newScan._id).populate('agent', 'username');
+        io.emit('newScan', populatedScan);
         res.status(201).json(newScan);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
